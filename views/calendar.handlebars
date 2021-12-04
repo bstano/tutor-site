@@ -1,0 +1,243 @@
+{{!-- This is the original header --}}
+<div class="bg_img">
+    <header class="header">
+        <nav class="navbar-light fixed-top topnav">
+            <div>
+                <img src="./img/shutterstock_402326182_brain.png" class="logo-image">
+                <div class="dropdown dropdown-toggle">
+                    <button id="logoutButton" class="dropbtn"></button>
+                    <div class="dropdown-content">
+                        <a class="btnLogout" style="padding: 0%;" href="#">Logout</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+
+    {{!-- Calendar container --}}
+    <div class="calendar-container">
+        <div class="row">
+            <div class="col-md-1"></div>
+            <div class="col-md-10">
+                <div id='calendarDiv'></div>
+            </div>
+            <div class="col-md-1"></div>
+        </div>
+    </div>
+</div>
+<!-- Make a BOOKING Modal -->
+<div class="modal fade" id="bookingModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+<div class="modal-content">
+    <div class="modal-header">
+        <h5 class="modal-title" id="booking_modal">Make a Booking</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+    <div class="modal-body" id="bookingDivWithID" data-bookingID="">
+        <form class="eventModal">
+            <div class="form-group">
+            <label for="exampleFormControlSelectSubjects">Select Subject</label>
+            <select class="form-control" id="bookingSubject-input">
+            <option value="" disabled selected hidden>Please choose...</option>
+            </select>
+            </div>
+            <div class="form-group" id="tutorSelector" style="display:none">
+                <label for="exampleFormControlSelect1">Tutor</label>
+                <select class="form-control" id="bookingTutor-input">
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="bookingStartTime">Start Time</label>
+                <input type="datetime-local" id="bookingStartTime-input" name="bookingStartTime">
+            </div>
+            <div class="form-group">
+                <label for="bookingEndTime">End Time</label>
+                <input type="datetime-local" id="bookingEndTime-input" name="bookingEndTime">
+            </div>
+            <div class="form-group">
+                <label for="exampleFormControlTextarea1">Link to your online tutoring session</label>
+                <textarea class="form-control" id="videoLink-input" rows="1"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="exampleFormControlTextarea1">Notes:</label>
+                <textarea class="form-control" id="bookingNotes-input" rows="3"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger mr-auto" id="bookingDeleteBtn" data-dismiss="modal" style="display:none">Delete</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="bookingSaveBtn">Save changes</button>
+            </div>
+            </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{!-- functionality for the booking modal --}}
+<script type="text/javascript">
+
+    function clearForm() {
+        $('#bookingTutor-input').find('option').remove();
+        $('#bookingSubject-input').find('option').remove();
+        $('#bookingStartTime-input').val('');
+        $('#bookingEndTime-input').val('');
+        $('#bookingNotes-input').val('');
+        $('#videoLink-input').val('');
+    }
+
+   $('#bookingModal').on('hide.bs.modal', function (event) {
+       clearForm();
+   });
+
+   $('#bookingModal').on('shown.bs.modal', function (event) {
+        event.preventDefault();
+
+        // only show the delete button if we are editing an existing booking
+        if ((sessionStorage.getItem('newEvent') === 'true') || (sessionStorage.getItem('userType') === 'tutor')) {
+            $("#bookingDeleteBtn").hide();
+        }
+        else {
+            $("#bookingDeleteBtn").show(); 
+        }
+
+        // Send the GET request to get all the subjects
+        $.ajax('/api/subjects', {
+            type: "GET",
+            success: function (response) {
+
+                const $bookingSubjectInput = $('#bookingSubject-input');
+                // fill the subject select with the subjects
+                $bookingSubjectInput.append('<option value="" disabled selected hidden>Please choose...</option>');
+                $.each(response, function (i, item) {
+                    $bookingSubjectInput.append($('<option>', {
+                        value: item.id,
+                        text: item.name
+                    }));
+                });
+
+                // and set the subject based on the event subject, but only if doing existing events
+                if (sessionStorage.getItem('newEvent') === 'false') {
+                    let subjectId = sessionStorage.getItem('subjectId');
+                    $bookingSubjectInput.val(subjectId);
+                    // and fire the event so the tutor input is loaded and set
+                    $bookingSubjectInput.trigger("change");
+                }
+            }
+        });
+    });
+
+    $("#bookingSubject-input").on("change", function (event) {
+        event.preventDefault();
+
+        let subjectId = $(this).val();
+
+        // clear the tutor select
+        $('#bookingTutor-input').empty();
+
+        // Send the GET request to get the tutors who tutor this subject
+        $.ajax('/api/subjecttutors/' + subjectId, {
+            type: "GET",
+            success: function (response) {
+
+                // fill the tutor select with the subject's tutors
+                $.each(response, function (i, item) {
+                    $('#bookingTutor-input').append($('<option>', {
+                        value: item.User.id,
+                        text: `${item.User.firstName} ${item.User.lastName}`
+                    }));
+                });
+
+                // and select the tutor based on the event tutor, but only if doing existing events
+                if (sessionStorage.getItem('newEvent') === 'false') {
+                    let tutorId = sessionStorage.getItem('tutorId');
+                    $('#bookingTutor-input').val(tutorId);
+                }
+            }
+        });
+    });
+
+    $("#bookingSaveBtn").on("click", function (event) {
+        event.preventDefault();
+
+        if ( (Date.now() < new Date($('#bookingStartTime-input').val())) &&
+             (new Date($('#bookingStartTime-input').val()) < new Date($('#bookingEndTime-input').val())) ) {
+            // get the details and save the booking
+            const bookingData = {
+                StudentId: sessionStorage.getItem('userId'),
+                TutorId: $('#bookingTutor-input').val(),
+                SubjectId: $('#bookingSubject-input').val(),
+                startTime: $('#bookingStartTime-input').val(),
+                endTime: $('#bookingEndTime-input').val(),
+                notes: $('#bookingNotes-input').val().trim(),
+                videoLink: $('#videoLink-input').val().trim()
+            };
+
+            // if it's a new event POST it
+            if (sessionStorage.getItem('newEvent') === 'true') {
+                $.post('/api/booking', bookingData)
+                    .then(() => {
+                        // go back to the members page
+                        window.location.replace('/members');
+                        // If there's an error, log the error
+                        clearForm();
+                    })
+                    .fail((err) => {
+                        console.log(err);
+                    });
+            } 
+            else {
+                // it's an existing event so need to update via PUT
+                bookingData.id = $('#bookingDivWithID').data('bookingID');
+
+                $.ajax('/api/bookings', {
+                    type: "PUT",
+                    data: bookingData
+                    })
+                    .done(() => {
+                        // go back to the members page
+                        window.location.replace('/members');
+                        clearForm();
+                        // If there's an error, log the error
+                    })
+                    .fail((err) => {
+                        console.log(err);
+                    });
+            }
+        }
+        else {
+            window.alert('There is an error with the DateTimes. Please check them and try again.');
+        }
+    });
+
+    $("#bookingDeleteBtn").on("click", function (event) {
+        //debugger;
+        event.preventDefault();
+        // get the booking ID
+        const id = $('#bookingDivWithID').data('bookingID');
+        console.log(id, typeof id);
+
+        //delete the booking
+        $.ajax( {
+            url: "/api/booking/" + id,
+            type: "DELETE",
+            success: function() {
+                window.location.replace('/members');
+                clearForm();
+            }
+        });
+    });
+    
+    //disabled the Subjects options for tutor
+    $('#bookingSubject-input').attr('disabled', (sessionStorage.getItem('userType') === 'tutor'));
+    
+    // hiding the tutor input and delete if a tutor has opened the booking modal
+    if (sessionStorage.getItem('userType') === 'student') {
+        $('#tutorSelector').show();
+    };
+
+</script>
+
